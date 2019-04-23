@@ -1,0 +1,8 @@
+This file cotains information about the dataset to be used .
+Dataset information : Indian License Plates by thamizhselvan
+Site : Kaggle
+Url: https://www.kaggle.com/thamizhsterio/indian-license-plates
+
+Files info:
+It contains three folders.
+We are using the images in Indian Number plate folder.
