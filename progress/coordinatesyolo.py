@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue May 28 19:32:32 2019
+Created on Fri Jun  7 22:22:51 2019
 
 @author: hp
 """
+
 
 from keras.layers import Input,Conv2D,MaxPooling2D,ZeroPadding2D,LeakyReLU,BatchNormalization
 from keras.models import Model
@@ -16,7 +17,8 @@ import matplotlib.pyplot as plt
 xtrain = np.load('xarr.npy')
 xtrain /= 255.0
 print(xtrain.shape)
-ytrain = np.load('target.npy')
+ytrainorg = np.load('target.npy')
+ytrain = ytrainorg[:,:,:,0:5]
 print(ytrain.shape)
 #%% model parameters
 grid_x = 14
@@ -46,13 +48,13 @@ def softmax(x, axis=-1):
 def sigmoid(x):
     return 1. / (1. + np.exp(-x))
 def plot_trainig(history):
-    plt.plot(history.history['yolo_metrics'])
+    '''plt.plot(history.history['yolo_metrics'])
     plt.plot(history.history['cls_loss'])
     plt.title('Model accuracy')
     plt.ylabel('Accuracy')
     plt.xlabel('Epoch')
     plt.legend(['Train', 'Test'], loc='upper left')
-    plt.show()
+    plt.show()'''
 
     # Plot training & validation loss values
     plt.plot(history.history['yolo_loss'])
@@ -62,6 +64,7 @@ def plot_trainig(history):
     plt.xlabel('Epoch')
     plt.legend(['Train', 'Test'], loc='upper left')
     plt.show()
+#%%
 def yolo_loss(y_true,y_pred):
     #shape_sor = K.shape(y_true)
     #shape = K.eval(shape_sor)
@@ -75,10 +78,7 @@ def yolo_loss(y_true,y_pred):
     w_true = y_true[:,:,:,3]
     w_pred = y_pred[:,:,:,3]
     h_true = y_true[:,:,:,4]
-    h_pred = y_pred[:,:,:,4]
-    classes_true = y_true[:,:,:,5:]
-    classes_pred = y_pred[:,:,:,5:]
-    softmaxed_pred = K.softmax(classes_pred)  
+    h_pred = y_pred[:,:,:,4]  
     score_pred = K.sigmoid(pc_pred) 
     adjx_pred = K.sigmoid(bx_pred) 
     adjy_pred = K.sigmoid(by_pred) 
@@ -91,9 +91,7 @@ def yolo_loss(y_true,y_pred):
     
     losswh = K.sum(pc_true*(K.square(w_true-adjw_pred) + K.square(h_true-adjh_pred)))/no_of_true
     
-    losscls = 50*K.sum(pc_true*K.sum(K.square(classes_true-softmaxed_pred),axis=-1))/no_of_true
-    
-    loss = (losspc + lossxy +losswh +losscls)
+    loss = (losspc + lossxy +losswh)
     #loss = total_loss
     
     
@@ -101,26 +99,13 @@ def yolo_loss(y_true,y_pred):
 #%%
 def yolo_metrics(y_true,y_pred):
     pc_true = y_true[:,:,:,0]
-    classes_true = y_true[:,:,:,5:]
-    softmaxed = K.softmax((y_pred[:,:,:,5:])*K.expand_dims(pc_true,axis=-1))
-    classt = K.argmax(classes_true,axis=-1)
-    classp = K.argmax(softmaxed,axis=-1)
-    eq = (K.cast(K.equal(classt,classp),'int8')) * K.cast(pc_true,'int8')
-    acc = K.sum(eq)
-    return acc
-#%%
-def cls_loss(y_true,y_pred):
-    classes_true = y_true[:,:,:,5:]
-    classes_pred = y_pred[:,:,:,5:]
-    softmaxed_pred = K.softmax(classes_pred)
-    losscls = 50*K.sum(y_true[:,:,:,0]*K.sum(K.square(classes_true-softmaxed_pred),axis=-1))/no_of_true
-    return losscls
+    return pc_true
+
 #%%
 def metrics(yt,yp):
     #yt = K.eval(y_true)
     #yp = K.eval(y_pred)
     pc_count =0
-    cls_count =0
     pc_acc =0
     for i in range(training_samples):
         for j in range(grid_y):
@@ -129,18 +114,13 @@ def metrics(yt,yp):
                     pc_count += 1
                     if(sigmoid(yp[i,j,k,0])>=0.5):
                         pc_acc +=1
-                    ct = yt[i,j,k,5:]
-                    cp = yp[i,j,k,5:]
-                    lp = np.argmax(softmax(cp))
-                    lt = np.argmax(ct)
-                    if(lp==lt):
-                        cls_count+=1
-    print(pc_count,pc_acc,cls_count)
+                    
+    print(pc_count,pc_acc)
     #print(characters.shape,no_of_char,correctly_classified)
    # print(yt[characters,5:].shape)
     #print(np.sum(np.abs(yt[characters,0] - yp[characters,0])))
     #print(np.sum(yp[characters,0]))
-    return cls_count/pc_count
+    return pc_acc/pc_count
 #%%
 def numpy_loss(yt,yp):
     pc = yt[:,:,:,0]
@@ -153,17 +133,13 @@ def numpy_loss(yt,yp):
     wp = sigmoid(yp[:,:,:,3])
     ht = yt[:,:,:,4]
     hp = sigmoid(yp[:,:,:,4])
-    clst = yt[:,:,:,5:]
-    clsp = softmax(yp[:,:,:,5:])
     pc_loss = np.sum(np.square(pc -score_pred))/training_samples
-    xy_loss = (np.sum(pc*(np.square(xt-xp)+np.square(byt-byp))))/no_of_true
-    wh_loss = (np.sum(pc*(np.square(ht-hp)+np.square(wt-wp))))/no_of_true
-    class_loss = np.sum(pc[:,:,:,np.newaxis]*np.square(clst-clsp))/training_samples
-    print(pc_loss,xy_loss,wh_loss,class_loss)
-    acc = np.sum(pc*(np.argmax(clst,axis=-1)==np.argmax(clsp,axis=-1)))
-    lbls = np.argmax(clsp,axis=-1)
-    print((lbls[((pc==1) * (np.argmax(clst,axis=-1)==np.argmax(clsp,axis=-1)))]))
-    return acc
+    x_loss = (np.sum(pc*(np.square(xt-xp))))/no_of_true
+    y_loss = (np.sum(pc*(np.square(byt-byp))))/no_of_true
+    w_loss = (np.sum(pc*(np.square(ht-hp))))/no_of_true
+    h_loss = (np.sum((pc*np.square(wt-wp))))/no_of_true/no_of_true
+    print(pc_loss,x_loss,y_loss,w_loss,h_loss)
+    
 #%%
                 
 inputs = Input(shape = (54,190,3))
@@ -202,15 +178,15 @@ x = BatchNormalization()(x)
 x = LeakyReLU()(x)
 x = Conv2D(64,3)(x)
 x = BatchNormalization()(x)
-x = Conv2D(41,1)(x)
+x = Conv2D(5,1)(x)
 model = Model(inputs=inputs,outputs=x)
 print(model.summary())
 print(K.int_shape(x))
 #%%,odel compilation
-model.compile('Adam',loss=yolo_loss,metrics=[yolo_metrics,cls_loss])
+model.compile('Adam',loss=yolo_loss,metrics=[yolo_loss])
 
 #%%
-history = model.fit(x=xtrain,y=ytrain,batch_size=124,epochs=4,verbose=1)
+history = model.fit(x=xtrain,y=ytrain,batch_size=16,epochs=10,verbose=1)
 #%% predict
 ypred = model.predict(xtrain)
 #%% accuracy/
